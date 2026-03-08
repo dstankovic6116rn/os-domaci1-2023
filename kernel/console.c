@@ -101,9 +101,55 @@ static struct {
 	{ "WHT", WHITE,   "YEL", YELLOW  }
 };
 
-static int menu_active = 0; // 0 - inactive, 1 - menu_active
+static int menu_active = 0; // 0 - inactive, 1 - active
 static int menu_selected = 0;
 static uchar console_color = ATTR(BLACK, WHITE); // default colors
+
+static int
+cursor_pos(void)
+{
+	int pos;
+	outb(CRTPORT, 14);
+	pos = inb(CRTPORT+1) << 8;
+	outb(CRTPORT, 15);
+	pos |= inb(CRTPORT+1);
+	return pos;
+}
+
+typedef struct {
+	int start_row;
+	int start_col;
+} MenuPosition;
+
+static MenuPosition
+calc_menu_position()
+{
+	int pos = cursor_pos();
+	int cur_row = pos / 80;
+	int cur_col = pos % 80;
+
+	// Menu dimensions
+	int menu_w = 9;
+	int menu_h = 6;
+
+	// Place menu just above the cursor row
+	int row = cur_row - menu_h;
+	if(row < 0)
+		row = 0;   // clamp to top of screen if not enough room above
+
+		// Place menu starting at cursor column
+		int col = cur_col;
+
+	// If menu would overflow the right edge, shift it left enough to fit
+	if(col + menu_w > 80)
+		col = 80 - menu_w;
+
+	MenuPosition mp;
+	mp.start_row = row;
+	mp.start_col = col;
+
+	return mp;
+}
 
 static void
 vga_putchar(int row, int col, char c, uchar attr)
@@ -118,7 +164,8 @@ draw_menu(int show, int selected)
 {
 
 	// Draw starting at screen row 1, col 60 (top-right area)
-	int start_row = 1, start_col = 60;
+	MenuPosition mp = calc_menu_position();
+	int start_row = mp.start_row, start_col = mp.start_col;
 	uchar menu_color = ATTR(WHITE, BLACK);
 	uchar def = ATTR(BLACK, WHITE);
 
@@ -166,8 +213,6 @@ draw_menu(int show, int selected)
 	for(int i = 0; i < 9; i ++){
 		vga_putchar(start_row + 5, start_col + i, '-', menu_color);
 	}
-
-
 }
 
 
