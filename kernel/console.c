@@ -103,6 +103,7 @@ static struct {
 
 static int menu_active = 0; // 0 - inactive, 1 - menu_active
 static int menu_selected = 0;
+static uchar console_color = ATTR(BLACK, WHITE); // default colors
 
 static void
 vga_putchar(int row, int col, char c, uchar attr)
@@ -118,8 +119,8 @@ draw_menu(int show, int selected)
 
 	// Draw starting at screen row 1, col 60 (top-right area)
 	int start_row = 1, start_col = 60;
-	uchar def = ATTR(BLACK, WHITE);
 	uchar menu_color = ATTR(WHITE, BLACK);
+	uchar def = ATTR(BLACK, WHITE);
 
 
 	if(!show){
@@ -133,7 +134,7 @@ draw_menu(int show, int selected)
 	}
 
 	// Draw top border:
-	for(int i = 0; i < 10; i ++){
+	for(int i = 0; i < 9; i ++){
 		vga_putchar(start_row, start_col + i, '-', menu_color);
 	}
 
@@ -162,7 +163,7 @@ draw_menu(int show, int selected)
 	}
 
 	// Draw top border:
-	for(int i = 0; i < 10; i ++){
+	for(int i = 0; i < 9; i ++){
 		vga_putchar(start_row + 5, start_col + i, '-', menu_color);
 	}
 
@@ -186,7 +187,8 @@ cgaputc(int c)
 	else if(c == BACKSPACE){
 		if(pos > 0) --pos;
 	} else
-		crt[pos++] = (c&0xff) | 0x0700;  // black on white
+		//use console_color instead of 0x0700
+		crt[pos++] = (c&0xff) | ((uint)console_color<<8);  // black on white
 
 	if(pos < 0 || pos > 25*80)
 		panic("pos under/overflow");
@@ -250,6 +252,10 @@ consoleintr(int (*getc)(void))
 			} else if(c == 's' || c == 'S'){
 				menu_selected = (menu_selected + 1) % 4;       // (3 + 1) % 4 = 0 wraps to top
 				draw_menu(1, menu_selected);
+			} else if (c == '\n' || c == '\r'){
+				console_color = ATTR(rows[menu_selected].bg, rows[menu_selected].fg);
+				menu_active = 0;
+				draw_menu(0, menu_selected);
 			}
 			continue; // discart any other key
 		}
