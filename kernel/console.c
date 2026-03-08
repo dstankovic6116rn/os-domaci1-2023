@@ -11,6 +11,7 @@
 #include "proc.h"
 #include "x86.h"
 #include "printf.h"
+#include "kbd.h"
 
 #include <stdarg.h>
 
@@ -22,6 +23,7 @@ static struct {
 	struct spinlock lock;
 	int locking;
 } cons;
+
 
 // Print to the console. only understands %d, %x, %p, %s.
 void
@@ -67,9 +69,106 @@ panic(char *s)
 		;
 }
 
+
+
 #define BACKSPACE 0x100
 #define CRTPORT 0x3d4
 static ushort *crt = (ushort*)P2V(0xb8000);  // CGA memory
+
+#define BLACK 0
+#define BLUE 1
+#define GREEN 2
+#define CYAN 3
+#define RED 4
+#define MAGENTA 5
+#define YELLOW 6
+#define WHITE 7
+
+// (bg) << 4 Takes the background color value and shifts its bits 4 places to the left. This moves the 4-bit bg value into the higher 4 bits. SHIFT: 0x1 << 4 becomes 0x10
+// | (fg): Takes the foreground color value and performs a bitwise OR with the shifted background value. This places the 4-bit fg value into the lower 4 bits of the byte. OR: 0x10 | 0x0F becomes 0x1F
+#define ATTR(bg, fg)  (((bg) << 4) | (fg))
+
+// Menu rows: {foreground label, fg color, background label, bg color}
+static struct {
+	char *flabel;
+	int fg;
+	char *blabel;
+	int bg;
+} rows[4] = {
+	{ "WHT", WHITE,   "BLK", BLACK   },
+	{ "PUR", MAGENTA, "WHT", WHITE   },
+	{ "RED", RED,     "AQU", CYAN    },
+	{ "WHT", WHITE,   "YEL", YELLOW  }
+};
+
+static int menu_active = 0; // 0 - inactive, 1 - menu_active
+static int menu_selected = 0;
+
+static void
+vga_putchar(int row, int col, char c, uchar attr)
+{
+	int pos = row * 80 + col;
+	crt[pos] = (attr << 8) | (uchar) c;
+}
+
+
+static void
+draw_menu(int show, int selected)
+{
+
+	// Draw starting at screen row 1, col 60 (top-right area)
+	int start_row = 1, start_col = 60;
+	uchar def = ATTR(BLACK, WHITE);
+	uchar menu_color = ATTR(WHITE, BLACK);
+
+
+	if(!show){
+		// Erase: write spaces with default attribute over menu area
+		for(int r = 0; r < 6; r++) {
+			for(int c = 0; c < 12; c++) {
+				vga_putchar(start_row + r, start_col + c, ' ', def);
+			}
+		}
+		return;
+	}
+
+	// Draw top border:
+	for(int i = 0; i < 10; i ++){
+		vga_putchar(start_row, start_col + i, '-', menu_color);
+	}
+
+
+	for(int i = 0; i < 4; i++){
+		int r = start_row + 1 + i;
+		uchar row_color = (i == selected) ? ATTR(GREEN, BLACK) : ATTR(WHITE, BLACK);
+
+		vga_putchar(r, start_col, '|', menu_color);
+
+		// Foreground swatch
+		char *fl = rows[i].flabel;
+		vga_putchar(r, start_col + 1, fl[0], row_color);
+		vga_putchar(r, start_col + 2, fl[1], row_color);
+		vga_putchar(r, start_col + 3, fl[2], row_color);
+
+		vga_putchar(r, start_col + 4, ' ', row_color);
+
+		// Background swatch
+		char *bl = rows[i].blabel;
+		vga_putchar(r, start_col + 5,  bl[0], row_color);
+		vga_putchar(r, start_col + 6,  bl[1], row_color);
+		vga_putchar(r, start_col + 7,  bl[2], row_color);
+
+		vga_putchar(r, start_col + 8, '|', menu_color);
+	}
+
+	// Draw top border:
+	for(int i = 0; i < 10; i ++){
+		vga_putchar(start_row + 5, start_col + i, '-', menu_color);
+	}
+
+
+}
+
 
 static void
 cgaputc(int c)
@@ -138,6 +237,23 @@ consoleintr(int (*getc)(void))
 
 	acquire(&cons.lock);
 	while((c = getc()) >= 0){
+
+		if(c == KEY_ALT_C) {
+			menu_active = !menu_active;
+			draw_menu(menu_active, menu_selected);
+			continue; // consume the key, do nothing else
+		}
+		if(menu_active){
+			if(c == 'w' || c == 'W'){
+				menu_selected = (menu_selected - 1 + 4) % 4;  // wraps to bottom (0 - 1 + 4) % 4 = 3
+				draw_menu(1, menu_selected);
+			} else if(c == 's' || c == 'S'){
+				menu_selected = (menu_selected + 1) % 4;       // (3 + 1) % 4 = 0 wraps to top
+				draw_menu(1, menu_selected);
+			}
+			continue; // discart any other key
+		}
+
 		switch(c){
 		case C('P'):  // Process listing.
 			// procdump() locks cons.lock indirectly; invoke later

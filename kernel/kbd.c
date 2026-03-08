@@ -7,6 +7,7 @@ int
 kbdgetc(void)
 {
 	static uint shift;
+	static uint alt;
 	static uchar *charcode[4] = {
 		normalmap, shiftmap, ctlmap, ctlmap
 	};
@@ -31,8 +32,14 @@ kbdgetc(void)
 		shift &= ~E0ESC;
 	}
 
+	if (data == 0x38) { // Left ALT pressed
+		alt = ALT_PRESSED;
+	} else if (data == 0xB8) { //Left ALT released
+		alt = 0;
+	}
+
 	shift |= shiftcode[data];
-	shift ^= togglecode[data];
+	shift ^= togglecode[data]; // set/clear the  shift  flag on SHIFT down/up.
 	c = charcode[shift & (CTL | SHIFT)][data];
 	if(shift & CAPSLOCK){
 		if('a' <= c && c <= 'z')
@@ -40,6 +47,11 @@ kbdgetc(void)
 		else if('A' <= c && c <= 'Z')
 			c += 'a' - 'A';
 	}
+
+	if(alt && c == 'c'){
+		return KEY_ALT_C;
+	}
+
 	return c;
 }
 

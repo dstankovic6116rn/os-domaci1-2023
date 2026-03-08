@@ -32,6 +32,10 @@
 #define KEY_PGDN        0xE7
 #define KEY_INS         0xE8
 #define KEY_DEL         0xE9
+#define KEY_ALT_C 		0x1C // alt+c pressed It is a value that never appears in normal ASCII input from the keyboard, so it will not accidentally collide with a real character.
+#define ALT_PRESSED 	0x08 // kbdgetc() will OR this into its return value when the ALT key is currently held down. consoleintr() then checks for it.
+
+
 
 // C('A') == Control-A
 #define C(x) (x - '@')
@@ -113,6 +117,11 @@ static uchar ctlmap[256] =
 	[0xCB] KEY_LF,    [0xCD] KEY_RT,
 	[0x97] KEY_HOME,  [0xCF] KEY_END,
 	[0xD2] KEY_INS,   [0xD3] KEY_DEL
+};
+
+static uchar altmap[256] =
+{
+	// Idea: Create a new alt map that will call a function when letter "C" is pressed
 };
 
 #endif // KERNEL_KBD_H
